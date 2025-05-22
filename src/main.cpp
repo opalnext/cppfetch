@@ -17,7 +17,9 @@
 #include <psapi.h>
 #pragma comment(lib, "wbemuuid.lib")
 #pragma comment(lib, "pdh.lib")
-#else
+#endif
+
+#ifdef __linux__
 #include <sys/sysinfo.h>
 #include <sys/statvfs.h>
 #include <unistd.h>
