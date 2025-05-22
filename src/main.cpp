@@ -24,6 +24,7 @@
 #include <sys/statvfs.h>
 #include <unistd.h>
 #include <cstring>
+#include <sys/ioctl.h>
 #endif
 
 using namespace std;
