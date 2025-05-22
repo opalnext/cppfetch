@@ -22,9 +22,10 @@
 #ifdef __linux__
 #include <sys/sysinfo.h>
 #include <sys/statvfs.h>
+#include <sys/utsname.h>
+#include <sys/ioctl.h>
 #include <unistd.h>
 #include <cstring>
-#include <sys/ioctl.h>
 #endif
 
 using namespace std;
