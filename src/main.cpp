@@ -292,7 +292,6 @@ vector<string> getSystemInfoLines()
     uint64_t availRamMB = memStatus.ullAvailPhys / (1024 * 1024);
     info.push_back("Total/Free/Used RAM: " + to_string(totalRamMB) + " MB total/ " + to_string(availRamMB) + " MB avail. / " + to_string(totalRamMB - availRamMB) + " MB used");
 
-    // Then your usage (make sure this is inside a function):
     {
         DWORD currentPID = GetCurrentProcessId();
         DWORD parentPID = GetParentProcessId(currentPID);
@@ -437,7 +436,7 @@ vector<string> getSystemInfoLines()
 
 int main(int argc, char *argv[])
 {
-    // 1. Detect OS name string
+
     string osName;
 
 #if defined(_WIN32)
@@ -453,10 +452,8 @@ int main(int argc, char *argv[])
 
     fs::path exePath = fs::absolute(argv[0]).parent_path();
 
-    // 3. Construct BMP path: <exe dir>/icons/<osName>.bmp
     fs::path bmpFilePath = exePath / "icons" / (osName + ".bmp");
 
-    // 4. Open BMP file
     ifstream file(bmpFilePath, ios::binary);
     if (!file)
     {
@@ -464,7 +461,6 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    // Then your existing BMP loading code below, unchanged
     BMPHeader header;
     BMPInfoHeader info;
 
