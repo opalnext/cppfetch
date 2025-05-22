@@ -8,3 +8,7 @@ This is my first project made to progress with C++, I made this when I was 14 to
 - Shell detection
 - OS detection
 - ASCII icon
+
+## Example output of `cppfetch`
+### Windows 11
+![image](https://github.com/user-attachments/assets/58a2df9a-c8b2-4745-bd9a-e56910395140)
