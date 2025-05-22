@@ -7,7 +7,7 @@
 #include <iomanip>
 #include <filesystem>
 
-#if defined(_WIN32)
+#ifdef _WIN32
 #include <comdef.h>
 #include <WbemIdl.h>
 #include <windows.h>
@@ -58,7 +58,7 @@ struct RGB
 {
     unsigned char r, g, b;
 };
-
+#ifdef _WIN32
 typedef LONG(WINAPI *RtlGetVersionPtr)(PRTL_OSVERSIONINFOW);
 std::string getWindowsVersion()
 {
@@ -199,12 +199,13 @@ int getCPUUsagePercent()
 
     return static_cast<int>(std::round(counterVal.doubleValue));
 }
+#endif
 
 vector<string> getSystemInfoLines()
 {
     vector<string> info;
 
-#if defined(_WIN32)
+#ifdef _WIN32
 
     SYSTEM_INFO sysinfo;
     GetSystemInfo(&sysinfo);
