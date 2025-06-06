@@ -62,7 +62,50 @@ struct RGB
 {
     unsigned char r, g, b;
 };
+
 #ifdef _WIN32
+
+std::string getPdhErrorMessage(DWORD status)
+{
+    static char buffer[256];
+    if (FormatMessageA(
+            FORMAT_MESSAGE_FROM_HMODULE | FORMAT_MESSAGE_IGNORE_INSERTS,
+            GetModuleHandleA("pdh.dll"),
+            status,
+            0,
+            buffer,
+            sizeof(buffer),
+            nullptr) == 0)
+    {
+        return "Failed to get error message";
+    }
+    return string(buffer);
+}
+
+std::string wstring_to_utf8(const wstring &wstr)
+{
+    if (wstr.empty())
+        return {};
+
+    int size_needed = WideCharToMultiByte(CP_UTF8, 0, wstr.data(), (int)wstr.size(), nullptr, 0, nullptr, nullptr);
+    if (size_needed <= 0)
+    {
+        DWORD error = GetLastError();
+        std::cerr << "Failed to calculate UTF-8 buffer size. Error: " << error << "\n";
+        return {};
+    }
+
+    string strTo(size_needed, 0);
+    if (WideCharToMultiByte(CP_UTF8, 0, wstr.data(), (int)wstr.size(), &strTo[0], size_needed, nullptr, nullptr) <= 0)
+    {
+        DWORD error = GetLastError();
+        std::cerr << "Failed to convert wide string to UTF-8. Error: " << error << "\n";
+        return {};
+    }
+
+    return strTo;
+}
+
 typedef LONG(WINAPI *RtlGetVersionPtr)(PRTL_OSVERSIONINFOW);
 std::string getWindowsVersion()
 {
@@ -105,23 +148,31 @@ DWORD GetParentProcessId(DWORD pid)
 {
     DWORD ppid = 0;
     HANDLE hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-    if (hSnapshot != INVALID_HANDLE_VALUE)
+    if (hSnapshot == INVALID_HANDLE_VALUE)
     {
-        PROCESSENTRY32 pe;
-        pe.dwSize = sizeof(PROCESSENTRY32);
-        if (Process32First(hSnapshot, &pe))
-        {
-            do
-            {
-                if (pe.th32ProcessID == pid)
-                {
-                    ppid = pe.th32ParentProcessID;
-                    break;
-                }
-            } while (Process32Next(hSnapshot, &pe));
-        }
-        CloseHandle(hSnapshot);
+        std::cerr << "Failed to create process snapshot. Error: " << GetLastError() << "\n";
+        return 0;
     }
+
+    PROCESSENTRY32 pe{sizeof(PROCESSENTRY32)};
+
+    if (!Process32First(hSnapshot, &pe))
+    {
+        std::cerr << "Process32First failed. Error: " << GetLastError() << "\n";
+        CloseHandle(hSnapshot);
+        return 0;
+    }
+
+    do
+    {
+        if (pe.th32ProcessID == pid)
+        {
+            ppid = pe.th32ParentProcessID;
+            break;
+        }
+    } while (Process32Next(hSnapshot, &pe));
+
+    CloseHandle(hSnapshot);
     return ppid;
 }
 
@@ -129,75 +180,81 @@ std::string GetProcessName(DWORD pid)
 {
     std::string result = "Unknown";
     HANDLE hProcess = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, pid);
-    if (hProcess)
+    if (!hProcess)
     {
-        char exeName[MAX_PATH];
-        if (GetModuleBaseNameA(hProcess, NULL, exeName, MAX_PATH))
-            result = exeName;
-        CloseHandle(hProcess);
+        DWORD error = GetLastError();
+        std::cerr << "Failed to open process. Error: " << error << "\n";
+        return result;
     }
+
+    char exeName[MAX_PATH];
+    if (!GetModuleBaseNameA(hProcess, NULL, exeName, MAX_PATH))
+    {
+        DWORD error = GetLastError();
+        std::cerr << "Failed to get module base name. Error: " << error << "\n";
+    }
+    else
+    {
+        result = exeName;
+    }
+
+    CloseHandle(hProcess);
     return result;
-}
-
-string getPdhErrorMessage(DWORD status)
-{
-    static char buffer[256];
-    FormatMessageA(
-        FORMAT_MESSAGE_FROM_HMODULE | FORMAT_MESSAGE_IGNORE_INSERTS,
-        GetModuleHandleA("pdh.dll"),
-        status,
-        0,
-        buffer,
-        sizeof(buffer),
-        nullptr);
-    return string(buffer);
-}
-
-string wstring_to_utf8(const wstring &wstr)
-{
-    if (wstr.empty())
-        return {};
-    int size_needed = WideCharToMultiByte(CP_UTF8, 0, wstr.data(), (int)wstr.size(), nullptr, 0, nullptr, nullptr);
-    string strTo(size_needed, 0);
-    WideCharToMultiByte(CP_UTF8, 0, wstr.data(), (int)wstr.size(), &strTo[0], size_needed, nullptr, nullptr);
-    return strTo;
 }
 
 int getCPUUsagePercent()
 {
-    static PDH_HQUERY cpuQuery;
-    static PDH_HCOUNTER cpuTotal;
+    static PDH_HQUERY cpuQuery = NULL;
+    static PDH_HCOUNTER cpuTotal = NULL;
     static bool initialized = false;
 
     if (!initialized)
     {
-        if (PdhOpenQuery(nullptr, 0, &cpuQuery) != ERROR_SUCCESS)
+        DWORD status = PdhOpenQuery(nullptr, 0, &cpuQuery);
+        if (status != ERROR_SUCCESS)
         {
-            std::cerr << "Failed to open PDH query.\n";
+            std::cerr << "Failed to open PDH query: " << getPdhErrorMessage(status) << "\n";
             return -1;
         }
-        if (PdhAddEnglishCounterW(cpuQuery, L"\\Processor(_Total)\\% Processor Time", 0, &cpuTotal) != ERROR_SUCCESS)
+
+        status = PdhAddEnglishCounterW(cpuQuery, L"\\Processor(_Total)\\% Processor Time", 0, &cpuTotal);
+        if (status != ERROR_SUCCESS)
         {
-            std::cerr << "Failed to add PDH counter.\n";
+            std::cerr << "Failed to add PDH counter: " << getPdhErrorMessage(status) << "\n";
+            PdhCloseQuery(cpuQuery);
             return -1;
         }
-        if (PdhCollectQueryData(cpuQuery) != ERROR_SUCCESS)
+
+        status = PdhCollectQueryData(cpuQuery);
+        if (status != ERROR_SUCCESS)
         {
-            std::cerr << "Failed to collect initial PDH data.\n";
+            std::cerr << "Failed to collect initial PDH data: " << getPdhErrorMessage(status) << "\n";
+            PdhCloseQuery(cpuQuery);
             return -1;
         }
+
         initialized = true;
         Sleep(400);
     }
-    if (PdhCollectQueryData(cpuQuery) != ERROR_SUCCESS)
+
+    DWORD status = PdhCollectQueryData(cpuQuery);
+    if (status != ERROR_SUCCESS)
     {
-        std::cerr << "Failed to collect PDH data.\n";
+        std::cerr << "Failed to collect PDH data: " << getPdhErrorMessage(status) << "\n";
         return -1;
     }
+
     PDH_FMT_COUNTERVALUE counterVal;
-    if (PdhGetFormattedCounterValue(cpuTotal, PDH_FMT_DOUBLE, nullptr, &counterVal) != ERROR_SUCCESS)
+    status = PdhGetFormattedCounterValue(cpuTotal, PDH_FMT_DOUBLE, nullptr, &counterVal);
+    if (status != ERROR_SUCCESS)
     {
-        std::cerr << "Failed to format counter value.\n";
+        std::cerr << "Failed to format counter value: " << getPdhErrorMessage(status) << "\n";
+        return -1;
+    }
+
+    if (counterVal.CStatus != ERROR_SUCCESS)
+    {
+        std::cerr << "Counter value is invalid: " << getPdhErrorMessage(counterVal.CStatus) << "\n";
         return -1;
     }
 
