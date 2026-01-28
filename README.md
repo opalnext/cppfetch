@@ -1,7 +1,7 @@
 # C++ Fetch (cppfetch)
 
 ## Introduction
-This is my first project made to progress with C++, I made this when I was 14 to start some C++ projects to learn more about it.
+This is my first project made with C++, I made this along some other C++ projects to learn more about the language.
 
 ## What works:
 - Hardware detection such as RAM usage, CPU, GPUs
